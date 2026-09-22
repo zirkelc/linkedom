@@ -1,0 +1,19 @@
+commit	delta1	delta2	status	description
+8da81d9	-35.43%	-34.38%	keep	EventTarget: create the listeners map on first addEventListener instead of in the constructor of every node. Heap per document -55%.
+8b9ee80	-5.11%	-4.77%	keep	DOMTokenList: cache the joined class value, invalidate on every mutating path. query-scraper 1.45x, extract cases 1.08-1.14x.
+f5dbcc1	+0.75%		discard	shared setAttribute: normalise class without a token list. No effect: the parser does not use this path.
+38fcb88	-2.31%		discard	parser attribute(): normalise class without a token list. Real but under the bar (parse-shop -4.2%, TOTAL -2.3%); candidate to bundle with other parse-path work.
+fba6ad2	-4.09%	-3.35%	keep	escape(): skip the replace pass when no character needs escaping; Attr.toString: skip the quote replace when there is no quote. serialize 1.09-1.12x, bench-dom 1.05-1.07x.
+baf8055	-2.28%	-0.94%	keep	childNodes/children: single pass over the linked list, jumping over element subtrees. crawl 1.20-1.22x, per-case rule; also removes a helper import.
+5654d86	-1.65%		discard	matches(): cache compiled selectors. Compilation is minor next to matching (query-scraper -0.9%); needed an extra test for the cache-clear branch.
+8cb4dcc	-4.06%	-3.04%	keep	Element.toString: concatenate into one string instead of pushing pieces into an array and joining. serialize 1.74x both runs, bench-dom 1.04x.
+70ecb12	-0.61%	+0.66%	keep	textContent/innerText/wholeText: concatenate instead of array join. text-content 1.52x and 1.31x (per-case rule); TOTAL neutral, inside the noise band.
+bb637ff	-4.71%	-4.42%	keep	parser: normalise class values without a token list + single htmlClasses lookup (bundle; the class part alone was -2.3% earlier). parse-shop 1.05-1.14x, bench-dom 1.06x.
+18f647d	-6.01%	-6.25%	discard	end marker as a class instance: clone-deep 1.82x, bench-dom 1.08x, parse 1.03-1.07x, but every tree walk regresses (query-simple +26/+31%, query-first +23/+25%, crawl +16/+17%, text-content +24/+40%). Mixed, GEOMEAN inconsistent (+1.9%/-1.1%).
+6781b0e	-11.24%	-12.50%	keep	end marker: object literal with string keys, symbol links assigned after. A literal with symbol keys uses a slow allocation path. clone-deep 1.71-1.74x, bench-dom 1.22x, parse 1.03-1.04x; serialize regresses 8-9%.
+595fed1	+3.82%		discard	refinement: symbol links back inside the marker literal (after the string keys). Worse: clone-deep +26%, TOTAL +3.8%. Symbol keys in a literal are the slow path wherever they stand.
+e174a87	+0.22%		discard	avoid symbol-key literals in Element.toString seed and Document.query. serialize -3.5%, TOTAL +0.2%: both under the bar (the objects are per call, not per node).
+8231824	-0.05%		discard	toString: keep open elements on a stack instead of reading the end marker link. serialize -3.8%, under the bar; does not recover the 8% the marker change costs.
+d8c5e4d	+1.98%		discard	selector adapter reads the class attribute instead of classList.value: slower (query-scraper +7.4%), because getAttribute walks the attribute list while the token value is cached.
+0422d5d	+0.56%		discard	innerHTML getter walks the list, setter sets ownerDocument without collecting child nodes. No effect: the round trip is dominated by re-parsing.
+0f109dd	-0.35%		discard	query walks read nodeType once per node; getElementsByClassName drops the extra hasAttribute walk. query-scraper -4.4%, under the bar.
