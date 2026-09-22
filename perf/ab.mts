@@ -29,10 +29,10 @@ const { config, positionals, values } = loadConfig(HARNESS_DIR, process.argv.sli
   child: { type: "boolean" },
 });
 
-const ITERS = Number(values.iters ?? 30);
+const ITERS = Number(values.iters ?? 20);
 const WARMUP = Number(values.warmup ?? 3);
 const TARGET_NS = Number(values["target-ms"] ?? 1.5) * 1_000_000;
-const REPEATS = Number(values.repeats ?? 2);
+const REPEATS = Number(values.repeats ?? 1);
 
 /** Children run with `--expose-gc`; the parent does not need it. */
 const gc: () => void = (globalThis as any).gc ?? (() => {});
