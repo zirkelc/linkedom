@@ -1,0 +1,5 @@
+{
+  "entry": "esm/index.js",
+  "src": ["esm"],
+  "cases": "perf/cases.mts"
+}

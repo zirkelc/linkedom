@@ -1,0 +1,58 @@
+{
+  "extract-pages": {
+    "hash": "1bee02a9",
+    "bytes": 466
+  },
+  "extract-products": {
+    "hash": "08d5b0e4",
+    "bytes": 507
+  },
+  "parse-shop": {
+    "hash": "1fe1e8f0",
+    "bytes": 787
+  },
+  "parse-bench": {
+    "hash": "cec4ba9a",
+    "bytes": 23
+  },
+  "query-scraper": {
+    "hash": "41a68d5b",
+    "bytes": 2302
+  },
+  "query-first": {
+    "hash": "71dfb82f",
+    "bytes": 1112
+  },
+  "query-simple": {
+    "hash": "478d1b3e",
+    "bytes": 673
+  },
+  "contains-position": {
+    "hash": "737e8c77",
+    "bytes": 1723
+  },
+  "clone-deep": {
+    "hash": "8069cef3",
+    "bytes": 166
+  },
+  "crawl": {
+    "hash": "199e6e85",
+    "bytes": 182
+  },
+  "serialize": {
+    "hash": "8069cef3",
+    "bytes": 166
+  },
+  "text-content": {
+    "hash": "18ecf08f",
+    "bytes": 681
+  },
+  "bench-dom": {
+    "hash": "65f6cf15",
+    "bytes": 68
+  },
+  "bench-w3c": {
+    "hash": "659ac63c",
+    "bytes": 53
+  }
+}
