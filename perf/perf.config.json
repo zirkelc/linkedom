@@ -1,5 +1,5 @@
 {
   "entry": "esm/index.js",
-  "src": ["esm"],
+  "src": ["esm", "commonjs"],
   "cases": "perf/cases.mts"
 }
