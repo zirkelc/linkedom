@@ -18,6 +18,8 @@ interface Row {
   first: number;
   /** Minimum ns per case body for the module loaded second. */
   second: number;
+  /** Median over iterations of (second / first), each pair timed back to back. */
+  ratio: number;
 }
 
 const HARNESS_DIR = import.meta.dirname;
@@ -29,7 +31,7 @@ const { config, positionals, values } = loadConfig(HARNESS_DIR, process.argv.sli
   child: { type: "boolean" },
 });
 
-const ITERS = Number(values.iters ?? 20);
+const ITERS = Number(values.iters ?? 30);
 const WARMUP = Number(values.warmup ?? 3);
 const TARGET_NS = Number(values["target-ms"] ?? 1.5) * 1_000_000;
 const REPEATS = Number(values.repeats ?? 1);
@@ -76,20 +78,34 @@ async function measure(entryFirst: string, entrySecond: string): Promise<Array<R
      */
     const timeA = () => (gc(), timeNs(runA));
     const timeB = () => (gc(), timeNs(runB));
+    /**
+     * On a loaded machine (and on cores of different speed) the minimum of each side is the
+     * best moment each side happened to get. The two runs of one iteration share the machine
+     * state, so the median of their ratios is the more robust estimate of the difference.
+     */
     let minA = Number.POSITIVE_INFINITY;
     let minB = Number.POSITIVE_INFINITY;
+    const ratios: Array<number> = [];
     for (let iter = 0; iter < ITERS; iter++) {
+      let tA: number;
+      let tB: number;
       if (iter % 2 === 0) {
-        minA = Math.min(minA, timeA());
-        minB = Math.min(minB, timeB());
+        tA = timeA();
+        tB = timeB();
       } else {
-        minB = Math.min(minB, timeB());
-        minA = Math.min(minA, timeA());
+        tB = timeB();
+        tA = timeA();
       }
+      minA = Math.min(minA, tA);
+      minB = Math.min(minB, tB);
+      ratios.push(tB / tA);
     }
+    ratios.sort((x, y) => x - y);
+    const mid = ratios.length >> 1;
+    const ratio = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
     a.teardown?.();
     b.teardown?.();
-    rows.push({ name: a.name, first: minA / reps, second: minB / reps });
+    rows.push({ name: a.name, first: minA / reps, second: minB / reps, ratio });
   }
   return rows;
 }
@@ -113,6 +129,7 @@ function minRows(runs: Array<Array<Row>>): Array<Row> {
     name: row.name,
     first: Math.min(...runs.map((r) => r[i].first)),
     second: Math.min(...runs.map((r) => r[i].second)),
+    ratio: Math.exp(runs.reduce((sum, r) => sum + Math.log(r[i].ratio), 0) / runs.length),
   }));
 }
 
@@ -133,28 +150,25 @@ if (values.child) {
   const pct = (ratio: number) => `${((ratio - 1) * 100).toFixed(2).padStart(7)}%`;
   const speedup = (ratio: number) => `${(1 / ratio).toFixed(2).padStart(6)}x`;
 
-  console.log(`A = ${revA}, B = ${revB} (min of ${ITERS} iters, ${REPEATS} children x 2 load orders, ms)`);
+  console.log(`A = ${revA}, B = ${revB} (min ms of ${ITERS} iters; delta = median of paired ratios; ${REPEATS} children x 2 load orders)`);
   console.log(`${"case".padEnd(26)}${"A".padStart(10)}${"B".padStart(10)}${"delta".padStart(9)}${"speed".padStart(8)}`);
 
   let sumA = 0;
   let sumB = 0;
   let logSum = 0;
-  const totals = { abA: 0, abB: 0, baA: 0, baB: 0 };
   for (let i = 0; i < orderAB.length; i++) {
     const ab = orderAB[i];
     const ba = orderBA[i];
-    const ratio = Math.sqrt((ab.second / ab.first) * (ba.first / ba.second));
+    /** orderAB measured B/A, orderBA measured A/B; the geometric mean cancels load-order bias. */
+    const ratio = Math.sqrt(ab.ratio / ba.ratio);
     logSum += Math.log(ratio);
     const a = (ab.first + ba.second) / 2;
     sumA += a;
     sumB += a * ratio;
-    totals.abA += ab.first;
-    totals.abB += ab.second;
-    totals.baB += ba.first;
-    totals.baA += ba.second;
     console.log(`${ab.name.padEnd(26)}${ms(a)}${ms(a * ratio)} ${pct(ratio)}${speedup(ratio)}`);
   }
-  const totalRatio = Math.sqrt((totals.abB / totals.abA) * (totals.baB / totals.baA));
+  /** Per-case ratios weighted by the case's time. */
+  const totalRatio = sumB / sumA;
   console.log(`${"TOTAL".padEnd(26)}${ms(sumA)}${ms(sumA * totalRatio)} ${pct(totalRatio)}${speedup(totalRatio)}`);
   /** Every case with the same weight, so the largest case does not decide alone. */
   const geo = Math.exp(logSum / orderAB.length);
