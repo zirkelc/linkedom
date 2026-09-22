@@ -18,6 +18,13 @@ export interface PerfCase {
   collect: () => unknown;
   /** Optional: create and return one retained instance, measured by the memory harness. */
   alloc?: () => unknown;
+  /**
+   * Optional: build the inputs just before the case runs. Large inputs (parsed documents) that
+   * stay alive for every case make each collection slower and the timings noisier.
+   */
+  setup?: () => void;
+  /** Optional: release what `setup` built, once the case is done. */
+  teardown?: () => void;
 }
 
 /** A cases module exports this function. It receives the module namespace of the entry point. */

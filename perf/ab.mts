@@ -29,10 +29,13 @@ const { config, positionals, values } = loadConfig(HARNESS_DIR, process.argv.sli
   child: { type: "boolean" },
 });
 
-const ITERS = Number(values.iters ?? 15);
-const WARMUP = Number(values.warmup ?? 2);
+const ITERS = Number(values.iters ?? 30);
+const WARMUP = Number(values.warmup ?? 3);
 const TARGET_NS = Number(values["target-ms"] ?? 1.5) * 1_000_000;
 const REPEATS = Number(values.repeats ?? 2);
+
+/** Children run with `--expose-gc`; the parent does not need it. */
+const gc: () => void = (globalThis as any).gc ?? (() => {});
 
 /** Runs inside a child process: times the two entries loaded in the given order. */
 async function measure(entryFirst: string, entrySecond: string): Promise<Array<Row>> {
@@ -44,6 +47,8 @@ async function measure(entryFirst: string, entrySecond: string): Promise<Array<R
     const a: PerfCase = casesFirst[i];
     const b: PerfCase = casesSecond[i];
     if (a.name !== b.name) throw new Error(`Case order differs: ${a.name} vs ${b.name}`);
+    a.setup?.();
+    b.setup?.();
 
     /** JIT warm-up on the raw bodies, then size each timed run to about TARGET_NS. */
     let probe = Number.POSITIVE_INFINITY;
@@ -64,17 +69,26 @@ async function measure(entryFirst: string, entrySecond: string): Promise<Array<R
       runA();
       runB();
     }
+    /**
+     * The cases allocate whole documents, so a collection triggered by one side's garbage can
+     * land in the other side's timing. A full collection before each timed run keeps the two
+     * sides independent.
+     */
+    const timeA = () => (gc(), timeNs(runA));
+    const timeB = () => (gc(), timeNs(runB));
     let minA = Number.POSITIVE_INFINITY;
     let minB = Number.POSITIVE_INFINITY;
     for (let iter = 0; iter < ITERS; iter++) {
       if (iter % 2 === 0) {
-        minA = Math.min(minA, timeNs(runA));
-        minB = Math.min(minB, timeNs(runB));
+        minA = Math.min(minA, timeA());
+        minB = Math.min(minB, timeB());
       } else {
-        minB = Math.min(minB, timeNs(runB));
-        minA = Math.min(minA, timeNs(runA));
+        minB = Math.min(minB, timeB());
+        minA = Math.min(minA, timeA());
       }
     }
+    a.teardown?.();
+    b.teardown?.();
     rows.push({ name: a.name, first: minA / reps, second: minB / reps });
   }
   return rows;
@@ -85,7 +99,7 @@ function child(entryFirst: string, entrySecond: string): Array<Row> {
   const passthrough = ["--iters", String(ITERS), "--warmup", String(WARMUP), "--target-ms", String(TARGET_NS / 1_000_000)];
   const res = spawnSync(
     process.execPath,
-    [...process.execArgv, self, "--child", ...passthrough, "--entry", config.entry, "--cases", config.cases, ...config.src.flatMap((s) => ["--src", s]), entryFirst, entrySecond],
+    [...process.execArgv, "--expose-gc", self, "--child", ...passthrough, "--entry", config.entry, "--cases", config.cases, ...config.src.flatMap((s) => ["--src", s]), entryFirst, entrySecond],
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }
   );
   if (res.status !== 0) throw new Error(`child failed:\n${res.stderr}`);
@@ -124,11 +138,13 @@ if (values.child) {
 
   let sumA = 0;
   let sumB = 0;
+  let logSum = 0;
   const totals = { abA: 0, abB: 0, baA: 0, baB: 0 };
   for (let i = 0; i < orderAB.length; i++) {
     const ab = orderAB[i];
     const ba = orderBA[i];
     const ratio = Math.sqrt((ab.second / ab.first) * (ba.first / ba.second));
+    logSum += Math.log(ratio);
     const a = (ab.first + ba.second) / 2;
     sumA += a;
     sumB += a * ratio;
@@ -140,4 +156,7 @@ if (values.child) {
   }
   const totalRatio = Math.sqrt((totals.abB / totals.abA) * (totals.baB / totals.baA));
   console.log(`${"TOTAL".padEnd(26)}${ms(sumA)}${ms(sumA * totalRatio)} ${pct(totalRatio)}${speedup(totalRatio)}`);
+  /** Every case with the same weight, so the largest case does not decide alone. */
+  const geo = Math.exp(logSum / orderAB.length);
+  console.log(`${"GEOMEAN".padEnd(46)} ${pct(geo)}${speedup(geo)}`);
 }

@@ -4,48 +4,48 @@
     "bytes": 466
   },
   "extract-products": {
-    "hash": "08d5b0e4",
-    "bytes": 507
+    "hash": "47daa9c9",
+    "bytes": 404
+  },
+  "extract-home": {
+    "hash": "18086920",
+    "bytes": 104
   },
   "parse-shop": {
     "hash": "1fe1e8f0",
     "bytes": 787
   },
-  "parse-bench": {
-    "hash": "cec4ba9a",
-    "bytes": 23
-  },
   "query-scraper": {
-    "hash": "41a68d5b",
-    "bytes": 2302
+    "hash": "777d786d",
+    "bytes": 660
   },
   "query-first": {
-    "hash": "71dfb82f",
-    "bytes": 1112
+    "hash": "efa27dc6",
+    "bytes": 764
   },
   "query-simple": {
-    "hash": "478d1b3e",
-    "bytes": 673
+    "hash": "9f4cbbce",
+    "bytes": 224
   },
   "contains-position": {
-    "hash": "737e8c77",
-    "bytes": 1723
+    "hash": "33341bf4",
+    "bytes": 313
   },
   "clone-deep": {
-    "hash": "8069cef3",
-    "bytes": 166
+    "hash": "9691d789",
+    "bytes": 56
   },
   "crawl": {
-    "hash": "199e6e85",
-    "bytes": 182
+    "hash": "48cf56ed",
+    "bytes": 64
   },
   "serialize": {
-    "hash": "8069cef3",
-    "bytes": 166
+    "hash": "9691d789",
+    "bytes": 56
   },
   "text-content": {
-    "hash": "18ecf08f",
-    "bytes": 681
+    "hash": "9d094241",
+    "bytes": 202
   },
   "bench-dom": {
     "hash": "65f6cf15",

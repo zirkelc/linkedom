@@ -256,41 +256,59 @@ const benchSequence = (lib: any, html: string) => {
   return [childNodes, children, clone1, divs, ps, divsAfter, psAfter, clone2.length, fnv1a(clone2), fnv1a(root.outerHTML)];
 };
 
+/**
+ * Pages for the single-operation cases: one product page, one `/pages/*` page and one home page
+ * from different themes, about 2.7 MB. Short case bodies leave some timed runs without a
+ * collection, so the minimum stays clean.
+ */
+const SAMPLE = [
+  "allbirds.com_products_mens-strider-explore",
+  "deathwishcoffee.com_products_death-wish-instant-coffee-1",
+  "kitandace.com_pages_size-guide",
+  "nativecos.com_pages_about-us",
+].map((name) => {
+  const page = PAGES.find((p) => p.name === name);
+  if (!page) throw new Error(`Missing fixture ${name}`);
+  return page;
+});
+const PRODUCTS = OTHER_URLS.filter((p) => p.url.includes("/products/"));
+const HOMES = OTHER_URLS.filter((p) => !p.url.includes("/products/"));
+
 export function buildCases(lib: any): Array<PerfCase> {
   const cases: Array<PerfCase> = [];
   const parse = (html: string) => lib.parseHTML(html).document;
 
-  /** Documents parsed once, for the cases that only read. */
-  const shopDocs = PAGES.map((p) => parse(p.html));
-  const domDoc = new lib.DOMParser().parseFromString(DOM, "text/html");
-  const readDocs = [...shopDocs, domDoc];
+  /** Parsed documents for the read-only cases, alive only while such a case runs. */
+  let sampleDocs: Array<any> = [];
+  let readDocs: Array<any> = [];
+  const setupDocs = () => {
+    sampleDocs = SAMPLE.map((p) => parse(p.html));
+    readDocs = [...sampleDocs, new lib.DOMParser().parseFromString(DOM, "text/html")];
+  };
+  const teardownDocs = () => {
+    sampleDocs = [];
+    readDocs = [];
+  };
+  const readOnly = (c: PerfCase): PerfCase => ({ setup: setupDocs, teardown: teardownDocs, ...c });
 
-  cases.push({
-    name: "extract-pages",
+  const extractCase = (name: string, pages: Array<Page>): PerfCase => ({
+    name,
     run: () => {
-      for (const p of PAGES_URLS) extract(lib, p);
+      for (const p of pages) extract(lib, p);
     },
-    collect: () => PAGES_URLS.map((p) => {
+    collect: () => pages.map((p) => {
       const r = extract(lib, p);
       return [p.name, r.mainTag, r.html.length, fnv1a(r.html)];
     }),
   });
-
-  cases.push({
-    name: "extract-products",
-    run: () => {
-      for (const p of OTHER_URLS) extract(lib, p);
-    },
-    collect: () => OTHER_URLS.map((p) => {
-      const r = extract(lib, p);
-      return [p.name, r.mainTag, r.html.length, fnv1a(r.html)];
-    }),
-  });
+  cases.push(extractCase("extract-pages", PAGES_URLS));
+  cases.push(extractCase("extract-products", PRODUCTS));
+  cases.push(extractCase("extract-home", HOMES));
 
   cases.push({
     name: "parse-shop",
     run: () => {
-      for (const p of PAGES) parse(p.html);
+      for (const p of SAMPLE) parse(p.html);
     },
     collect: () => PAGES.map((p) => {
       const out = parse(p.html).toString();
@@ -298,29 +316,20 @@ export function buildCases(lib: any): Array<PerfCase> {
     }),
   });
 
-  cases.push({
-    name: "parse-bench",
-    run: () => {
-      new lib.DOMParser().parseFromString(DOM, "text/html");
-      new lib.DOMParser().parseFromString(W3C, "text/html");
-    },
-    collect: () => [DOM, W3C].map((h) => fnv1a(new lib.DOMParser().parseFromString(h, "text/html").toString())),
-  });
-
   /** Every selector of the extractor, read-only, on the untouched documents. */
   const scraperQueries = [SEL.skipLinks, SEL.main, SEL.sections, SEL.accessibility, "a", SEL.scripts, SEL.shopify, SEL.inputs, SEL.navigation, SEL.media, SEL.dialogs, SEL.templates];
-  cases.push({
+  cases.push(readOnly({
     name: "query-scraper",
     run: () => {
-      for (const d of shopDocs) for (const s of scraperQueries) d.body.querySelectorAll(s);
+      for (const d of sampleDocs) for (const s of scraperQueries) d.body.querySelectorAll(s);
     },
-    collect: () => shopDocs.map((d) => scraperQueries.map((s) => listHash(d.body.querySelectorAll(s)))),
-  });
+    collect: () => sampleDocs.map((d) => scraperQueries.map((s) => listHash(d.body.querySelectorAll(s)))),
+  }));
 
-  cases.push({
+  cases.push(readOnly({
     name: "query-first",
     run: () => {
-      for (const d of shopDocs) {
+      for (const d of sampleDocs) {
         d.querySelector(SEL.main);
         d.querySelector("title");
         d.querySelector("rss, feed");
@@ -328,13 +337,13 @@ export function buildCases(lib: any): Array<PerfCase> {
         d.body.querySelector(".shopify-section");
       }
     },
-    collect: () => shopDocs.map((d) => [SEL.main, "title", "rss, feed", 'link[rel="stylesheet"], style'].map((s) => {
+    collect: () => sampleDocs.map((d) => [SEL.main, "title", "rss, feed", 'link[rel="stylesheet"], style', ".shopify-section"].map((s) => {
       const el = d.querySelector(s);
       return el ? tag(el) : null;
     })),
-  });
+  }));
 
-  cases.push({
+  cases.push(readOnly({
     name: "query-simple",
     run: () => {
       for (const d of readDocs) {
@@ -348,18 +357,26 @@ export function buildCases(lib: any): Array<PerfCase> {
       listHash(d.documentElement.getElementsByTagName("p")),
       listHash(d.documentElement.getElementsByClassName("shopify-section")),
     ]),
-  });
-
-  /** Containment and document order between every template section and the main element. */
-  const positionPairs = shopDocs.map((d) => ({
-    main: findMainElement(d),
-    sections: Array.from(d.body.querySelectorAll(SEL.sections)) as Array<any>,
-    links: Array.from(d.body.querySelectorAll("a")) as Array<any>,
   }));
+
+  /** Containment and document order between template sections, links and the main element. */
+  let pairs: Array<{ main: any; sections: Array<any>; links: Array<any> }> = [];
   cases.push({
     name: "contains-position",
+    setup: () => {
+      setupDocs();
+      pairs = sampleDocs.map((d) => ({
+        main: findMainElement(d),
+        sections: Array.from(d.body.querySelectorAll(SEL.sections)),
+        links: Array.from(d.body.querySelectorAll("a")),
+      }));
+    },
+    teardown: () => {
+      pairs = [];
+      teardownDocs();
+    },
     run: () => {
-      for (const { main, sections, links } of positionPairs) {
+      for (const { main, sections, links } of pairs) {
         for (const s of sections) {
           s.contains(main);
           main.contains(s);
@@ -371,21 +388,21 @@ export function buildCases(lib: any): Array<PerfCase> {
         }
       }
     },
-    collect: () => positionPairs.map(({ main, sections, links }) => [
+    collect: () => pairs.map(({ main, sections, links }) => [
       sections.map((s) => [s.contains(main), main.contains(s), s.compareDocumentPosition(main)].join()).join("|"),
       fnv1a(links.map((a) => `${main.contains(a) ? 1 : 0}${a.compareDocumentPosition(main)}`).join()),
     ]),
   });
 
-  cases.push({
+  cases.push(readOnly({
     name: "clone-deep",
     run: () => {
       for (const d of readDocs) d.documentElement.cloneNode(true);
     },
     collect: () => readDocs.map((d) => fnv1a(d.documentElement.cloneNode(true).outerHTML)),
-  });
+  }));
 
-  cases.push({
+  cases.push(readOnly({
     name: "crawl",
     run: () => {
       for (const d of readDocs) {
@@ -394,26 +411,26 @@ export function buildCases(lib: any): Array<PerfCase> {
       }
     },
     collect: () => readDocs.map((d) => [crawl(d.documentElement, "childNodes"), crawl(d.documentElement, "children")]),
-  });
+  }));
 
-  cases.push({
+  cases.push(readOnly({
     name: "serialize",
     run: () => {
       for (const d of readDocs) d.documentElement.outerHTML;
     },
     collect: () => readDocs.map((d) => fnv1a(d.documentElement.outerHTML)),
-  });
+  }));
 
-  cases.push({
+  cases.push(readOnly({
     name: "text-content",
     run: () => {
-      for (const d of shopDocs) {
+      for (const d of sampleDocs) {
         d.body.textContent;
         d.title;
       }
     },
-    collect: () => shopDocs.map((d) => [fnv1a(d.body.textContent), d.title]),
-  });
+    collect: () => sampleDocs.map((d) => [fnv1a(d.body.textContent), d.title]),
+  }));
 
   cases.push({
     name: "bench-dom",
@@ -429,6 +446,8 @@ export function buildCases(lib: any): Array<PerfCase> {
       benchSequence(lib, W3C);
     },
     collect: () => benchSequence(lib, W3C),
+    /** Retained heap of one parsed document; run `mem.mts` with a small `--count`. */
+    alloc: () => new lib.DOMParser().parseFromString(W3C, "text/html"),
   });
 
   return cases;

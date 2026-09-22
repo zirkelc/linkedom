@@ -31,9 +31,12 @@ const actual: Record<string, { hash: string; bytes: number }> = {};
 for (const c of cases) {
   let sample: unknown;
   try {
+    c.setup?.();
     sample = c.collect();
   } catch (error) {
     sample = { __threw: replacer("", error) };
+  } finally {
+    c.teardown?.();
   }
   const json = JSON.stringify(sample, replacer);
   actual[c.name] = { hash: fnv1a(json), bytes: json.length };
